@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, SubsetRandomSampler
 import numpy as np
 from tqdm import tqdm, trange
-import ml_metrics as metrics
+#import ml_metrics as metrics
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 # this project
 from dataModule import SequenceDataset
@@ -61,8 +61,6 @@ def train(args):
     # Create our custom BERTClassifier model object
     model = BertClassifier(config, DEVICE)
     model.to(DEVICE)
-
-
     # Loss Function
     criterion = nn.CrossEntropyLoss()
     # Adam Optimizer with very small learning rate given to BERT
@@ -79,10 +77,14 @@ def train(args):
     model.zero_grad()
     epoch_iterator = trange(int(hyperparameters['NUM_EPOCHS']), desc="Epoch")
     # model
+    best_acc = 0
+    best_ckp_path = ''
     for epoch in epoch_iterator:
-        epoch_loss = 0.0
-        train_correct_total = 0
+        print("Training Epoch: {}".format(epoch+1))
+        train_loss = 0.0
         # Training Loop
+        y_true = list()
+        y_pred = list()
         train_iterator = tqdm(train_loader, desc="Train Iteration")
         for step, batch in enumerate(train_iterator):
             model.train(True)
@@ -101,27 +103,24 @@ def train(args):
             # print("a_id: {}".format(a_id))
             # print("labels: {}".format(labels.size()))
             logits = model(**inputs)
-
             # print("h_t: {}".format(len(h_t.tolist())))
-
             loss = criterion(logits, labels) / hyperparameters['GRADIENT_ACCUMULATION_STEPS']
             loss.backward()
-            epoch_loss += loss.item()
-
+            train_loss += loss.item()
             if (step + 1) % hyperparameters['GRADIENT_ACCUMULATION_STEPS'] == 0:
                 scheduler.step()
                 optimizer.step()
                 model.zero_grad()
-
             _, predicted = torch.max(logits.data, 1)
-            correct_reviews_in_batch = (predicted == labels).sum().item()
-            train_correct_total += correct_reviews_in_batch
-            # break
-        print('Epoch {} - Loss {}'.format(epoch + 1, epoch_loss))
+            y_pred += list(predicted.data.cpu().numpy())
+            y_true += list(labels.data.cpu().numpy())
+        train_acc = accuracy_score(y_true, y_pred)
         # Validation Loop
         with torch.no_grad():
-            val_correct_total = 0
+            val_loss = 0
             model.train(False)
+            val_y_true = list()
+            val_y_pred = list()
             val_iterator = tqdm(val_loader, desc="Validation Iteration")
             for step, batch in enumerate(val_iterator):
                 inputs = {
@@ -134,19 +133,26 @@ def train(args):
                 labels = [labels[0]]
                 labels = torch.tensor(labels, dtype=torch.long, device=DEVICE)
                 logits = model(**inputs)
-
                 _, predicted = torch.max(logits.data, 1)
-                correct_reviews_in_batch = (predicted == labels).sum().item()
-                val_correct_total += correct_reviews_in_batch
+                val_y_pred += list(predicted.data.cpu().numpy())
+                val_y_true += list(labels.data.cpu().numpy())
+                vloss = criterion(logits, labels) / hyperparameters['GRADIENT_ACCUMULATION_STEPS']
+                val_loss += vloss.item()
                 # break
-            training_acc_list.append(train_correct_total * 100 / len(train_indices))
-            validation_acc_list.append(val_correct_total * 100 / len(val_indices))
-            print('Training Accuracy {:.4f} - Validation Accurracy {:.4f}'.format(
-                train_correct_total * 100 / len(train_indices), val_correct_total * 100 / len(val_indices)))
-
+            val_acc = accuracy_score(val_y_true, val_y_pred)
+        print('Training Accuracy {} - Validation Accurracy {}'.format(
+            train_acc, val_acc))
+        print('Training loss {} - Validation Loss {}'.format(
+            train_loss, val_loss))
+        if val_acc > best_acc:
+            best_acc = val_acc
+            with open(
+                    'checkpoint/checkpoint_{}_at_epoch{}.model'.format(str(args.ckp_name), str(epoch)), 'wb'
+            ) as f:
+                torch.save(model.state_dict(), f)
+            best_ckp_path = 'checkpoint/checkpoint_{}_at_epoch{}.model'.format(str(args.ckp_name), str(epoch))
         # test
         with torch.no_grad():
-            test_correct_total = 0
             model.train(False)
             y_true = list()
             y_pred = list()
@@ -158,12 +164,10 @@ def train(args):
                     'token_type_ids': batch[1].squeeze(0).to(DEVICE),
                     'attention_mask': batch[2].squeeze(0).to(DEVICE)
                 }
-
                 labels = batch[3].squeeze(0)
                 labels = [labels[0]]
                 labels = torch.tensor(labels, dtype=torch.long, device=DEVICE)
                 logits = model(**inputs)
-
                 _, predicted = torch.max(logits.data, 1)
                 true_label = test_dataset.id2label(labels.tolist()[0])
                 # print(true_label)
@@ -171,26 +175,53 @@ def train(args):
                 # print(pre_label)
                 # print(len(h_t.tolist()))
                 # record the predict label and hidden representations
-                correct_reviews_in_batch = (predicted == labels).sum().item()
-                test_correct_total += correct_reviews_in_batch
                 pred_idx = torch.max(logits, 1)[1]
                 y_true += list(labels.data.cpu().numpy())
                 y_pred += list(pred_idx.data.cpu().numpy())
-            print(len(y_true), len(y_pred))
             acc = accuracy_score(y_true, y_pred)
-            #print("Quadratic Weighted Kappa is {}".format(metrics.quadratic_weighted_kappa(y_true, y_pred)))
             print("Test acc is {} ".format(acc))
-            print(classification_report(y_true, y_pred))
-            # break
-            validation_acc_list.append(test_correct_total * 100 / testset_size)
-            print('Test: \n')
-            print('Test Accurracy {:.4f}'.format(test_correct_total * 100 / testset_size))
-            print(confusion_matrix(y_true, y_pred))
             wandb.log(
-                {"Train loss": epoch_loss, "Train Acc": train_correct_total * 100 / len(train_indices),
-                 "Val Acc": val_correct_total * 100 / len(val_indices),
-                "test Acc": acc},
+                {"Train loss": train_loss, "Val loss": val_loss,
+                 "Train Acc": train_acc, "Val Acc": val_acc,
+                 "test Acc": acc},
             )
+
+    with torch.no_grad():
+        model.train(False)
+        y_true = list()
+        y_pred = list()
+        print("start to test at {} ".format(best_ckp_path))
+        model.load_state_dict(torch.load('./' + best_ckp_path))
+        model.eval()
+        test_iterator = tqdm(test_loader, desc="Test Iteration")
+        predict_labels = []
+        for step, batch in enumerate(test_iterator):
+            inputs = {
+                'input_ids': batch[0].squeeze(0).to(DEVICE),
+                'token_type_ids': batch[1].squeeze(0).to(DEVICE),
+                'attention_mask': batch[2].squeeze(0).to(DEVICE)
+            }
+            labels = batch[3].squeeze(0)
+            labels = [labels[0]]
+            labels = torch.tensor(labels, dtype=torch.long, device=DEVICE)
+            logits = model(**inputs)
+            _, predicted = torch.max(logits.data, 1)
+            true_label = test_dataset.id2label(labels.tolist()[0])
+            # print(true_label)
+            pre_label = test_dataset.id2label(predicted.tolist()[0])
+            # print(pre_label)
+            # print(len(h_t.tolist()))
+            # record the predict label and hidden representations
+            pred_idx = torch.max(logits, 1)[1]
+            y_true += list(labels.data.cpu().numpy())
+            y_pred += list(pred_idx.data.cpu().numpy())
+        print(len(y_true), len(y_pred))
+        acc = accuracy_score(y_true, y_pred)
+        #print("Quadratic Weighted Kappa is {}".format(metrics.quadratic_weighted_kappa(y_true, y_pred)))
+        print("Test acc is {} ".format(acc))
+        print(classification_report(y_true, y_pred))
+        print(confusion_matrix(y_true, y_pred))
+        wandb.log({"final_test Acc": acc})
 
 def main():
     parser = argparse.ArgumentParser()

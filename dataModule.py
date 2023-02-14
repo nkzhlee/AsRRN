@@ -22,17 +22,17 @@ class SequenceDataset(Dataset):
                     file_data.append(row)
 
         for row in file_data:
+            data_list = []
             a_id = row[0]
             cat = row[-1]
             q_id = row[2]
             context_text = q_context_dict[q_id]
+            data_list.append(context_text)
             q_text = q_text_dict[q_id]
             ans_text = row[1]
             ref_list = q_rubric_dict[q_id]
-            #data_list = [context_text]
-            data_list = []
             data_list.append(q_text)
-            for t in ref_list[0:2]:
+            for t in ref_list[0:]:
                 # add data
                 data_list.append(t)
             data_list.append(ans_text)
