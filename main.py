@@ -56,6 +56,7 @@ def train(args):
                         num_hidden_layers=12,
                         num_attention_heads=12,
                         intermediate_size=3072,
+                        hidden_dropout_prob=hyperparameters["hidden_dropout_prob"],
                         num_labels=hyperparameters['NUM_LABELS'])
 
     # Create our custom BERTClassifier model object
