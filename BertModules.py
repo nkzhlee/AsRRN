@@ -66,9 +66,9 @@ class BertClassifier(nn.Module):
             # a) copy every states n times, n = N
             c_state = states.permute((1, 0, 2))
             c_state = c_state.expand((-1, self.n_nodes + 1, -1))
-            # print('c_state: ', c_state.size())
+            #print('c_state: ', c_state.size())
             h_state = states.expand((self.n_nodes + 1, -1, -1))
-            # print('h_state: ', h_state.size())
+            #print('h_state: ', h_state.size())
             # b) concatenate h_i and h_j
             f_input = torch.cat((c_state, h_state), dim=2)
             # print('f_input: ', f_input.size())
