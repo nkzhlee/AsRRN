@@ -17,7 +17,7 @@ class BertClassifier(nn.Module):
         self.n_steps = hyperparameters['n_steps']
         #self.bert = BertModel(config)
         # Dropout to avoid overfitting
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dropout = nn.Dropout(hyperparameters["hidden_dropout_prob"])
         # A single layer classifier added on top of BERT to fine tune for binary classification
         self.mlp_hidden = hyperparameters['hidden_dim']
         self.o = nn.Sequential(
