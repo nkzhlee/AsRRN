@@ -94,5 +94,5 @@ class BertClassifier(nn.Module):
         output = torch.sigmoid(output)
         # print('output: ', output.size())
         # assert 1 == 0
-        return output
+        return output, states.squeeze(0)
         # return self.classifier(pooled_output)[0].unsqueeze(0)

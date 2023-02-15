@@ -7,30 +7,30 @@ SEP_TOKEN = '[SEP]'
 CLS_TOKEN = '[CLS]'
 
 # real
-hyperparameters = dict(
-    model_name="Bert_9nodes_WO_Contrastiveloss",
-    NUM_EPOCHS=20,
-    MAX_SEQ_LENGTH=256, # 256 best, 128 for debug
-    GRADIENT_ACCUMULATION_STEPS=2,
-    WARMUP_STEPS=2,
-    NUM_LABELS=3,
-# Graph
-    n_steps=3,
-    n_nodes=9,
-    max_length=256,
-    validation_split = 0.1,
-    batch_size = 1,
-    lr_bert = 5e-6,
-    lr = 5e-6,
-    lr_gamma = 2,
-    lr_step = 20,
-    clip_norm = 50,
-    weight_decay = 1e-4,
-    hidden_dim = 768,
-    mid_dim = 512,
-# Model
-    hidden_dropout_prob=0.3 # default = 0.1
-    )
+# hyperparameters = dict(
+#     model_name="Bert_9nodes_WO_Contrastiveloss",
+#     NUM_EPOCHS=20,
+#     MAX_SEQ_LENGTH=256, # 256 best, 128 for debug
+#     GRADIENT_ACCUMULATION_STEPS=2,
+#     WARMUP_STEPS=2,
+#     NUM_LABELS=3,
+# # Graph
+#     n_steps=3,
+#     n_nodes=9,
+#     max_length=256,
+#     validation_split = 0.1,
+#     batch_size = 1,
+#     lr_bert = 5e-6,
+#     lr = 5e-6,
+#     lr_gamma = 2,
+#     lr_step = 20,
+#     clip_norm = 50,
+#     weight_decay = 1e-4,
+#     hidden_dim = 768,
+#     mid_dim = 512,
+# # Model
+#     hidden_dropout_prob=0.3 # default = 0.1
+#     )
 
 #debug
 # train_file = ['data/Col-STAT/debug.csv']
@@ -42,6 +42,7 @@ hyperparameters = dict(
 #     GRADIENT_ACCUMULATION_STEPS=1,
 #     WARMUP_STEPS=1,
 #     NUM_LABELS=3,
+#     Lambda = 0.5,
 # # Graph
 #     n_steps=1,
 #     n_nodes=9,
@@ -55,7 +56,9 @@ hyperparameters = dict(
 #     clip_norm=50,
 #     weight_decay=1e-4,
 #     hidden_dim=768,
-#     mid_dim=128
+#     mid_dim=128,
+# # # Model
+#     hidden_dropout_prob=0.3 # default = 0.1
 #     )
 
 
