@@ -1,56 +1,60 @@
 import torch
 
-train_file = ['data/Col-STAT/traindev_set.csv']
-test_file = ['data/Col-STAT/test_set.csv']
 
 SEP_TOKEN = '[SEP]'
 CLS_TOKEN = '[CLS]'
 
 # real
-# hyperparameters = dict(
-#     model_name="Bert_9nodes_WO_Contrastiveloss",
-#     NUM_EPOCHS=20,
-#     MAX_SEQ_LENGTH=256, # 256 best, 128 for debug
-#     GRADIENT_ACCUMULATION_STEPS=2,
-#     WARMUP_STEPS=2,
-#     NUM_LABELS=3,
-# # Graph
-#     n_steps=3,
-#     n_nodes=9,
-#     max_length=256,
-#     validation_split = 0.1,
-#     batch_size = 1,
-#     lr_bert = 5e-6,
-#     lr = 5e-6,
-#     lr_gamma = 2,
-#     lr_step = 20,
-#     clip_norm = 50,
-#     weight_decay = 1e-4,
-#     hidden_dim = 768,
-#     mid_dim = 512,
-# # Model
-#     hidden_dropout_prob=0.3 # default = 0.1
-#     )
+train_file = ['data/Col-STAT/traindev_set.csv']
+test_file = ['data/Col-STAT/test_set.csv']
+result_file = "model_test.csv"
+hyperparameters = dict(
+    model_name="sim_exp_0301:newp3",
+    NUM_EPOCHS=20,
+    MAX_SEQ_LENGTH=256, # 256 best, 128 for debug
+    GRADIENT_ACCUMULATION_STEPS=1,
+    WARMUP_STEPS=2,
+    NUM_LABELS=3,
+# Graph
+    n_steps=2,
+    n_nodes=10,
+    max_length=256,
+    validation_split=0.2,
+    batch_size=1,
+    lr_bert=5e-6,
+    lr=9e-6,
+    lr_gamma=2,
+    lr_step=20,
+    clip_norm=50,
+    weight_decay=1e-4,
+    hidden_dim=768,
+    mid_dim=997,
+# Model
+    hidden_dropout_prob=0.2, # default = 0.1
+    Lambda=0.2,
+    temp=1,
+    )
 
 #debug
 # train_file = ['data/Col-STAT/debug.csv']
+# test_file = ['data/Col-STAT/debug_test_set.csv']
+# result_file = "./results/model_test.csv"
 # hyperparameters = dict(
 #     #model_name="Bert_WO_Contrastiveloss",
 #     model_name="debug",
-#     NUM_EPOCHS=5,
+#     NUM_EPOCHS=2,
 #     MAX_SEQ_LENGTH=64, # 256 best, 128 for debug
 #     GRADIENT_ACCUMULATION_STEPS=1,
 #     WARMUP_STEPS=1,
 #     NUM_LABELS=3,
-#     Lambda = 0.5,
 # # Graph
 #     n_steps=1,
-#     n_nodes=9,
+#     n_nodes=10,
 #     max_length=64,
 #     validation_split=0.1,
 #     batch_size=1,
-#     lr_bert=5e-6,
-#     lr=5e-6,
+#     lr_bert=1e-6,
+#     lr=1e-6,
 #     lr_gamma=2,
 #     lr_step=20,
 #     clip_norm=50,
@@ -58,7 +62,9 @@ CLS_TOKEN = '[CLS]'
 #     hidden_dim=768,
 #     mid_dim=128,
 # # # Model
-#     hidden_dropout_prob=0.3 # default = 0.1
+#     hidden_dropout_prob=0.3, # default = 0.1
+#     Lambda=0.5,
+#     temp=2,
 #     )
 
 
@@ -78,6 +84,8 @@ one = torch.ones(mid_dim)
 # #0 supernode that connected to everyone
 mask[0][4], mask[0][3], mask[0][2], mask[0][1] = one, one, one, one
 mask[0][5], mask[0][6], mask[0][7], mask[0][8], mask[0][9] = one, one, one, one, one
+# p_random_node
+mask[0][10] = one
 # #1 context node only connected to supernode
 mask[1][0] = one
 # #2: question node only connected to the supernode
@@ -85,13 +93,16 @@ mask[2][0], mask[2][1] = one, one
 # #3, #4: 6 reference answer nodes that connect to supernode and question node #2
 mask[3][0], mask[3][2] = one, one
 mask[4][0], mask[4][2] = one, one
+#pcorrect
 mask[5][0], mask[5][2] = one, one
 mask[6][0], mask[6][2] = one, one
+mask[10][0], mask[10][2] = one, one
+#incorrect
 mask[7][0], mask[7][2] = one, one
 mask[8][0], mask[8][2] = one, one
 # #5: a student answer node that connect to supernode and #3, #4
 mask[9][0], mask[9][3], mask[9][4] = one, one, one
-mask[9][5], mask[9][6] = one, one
+mask[9][5], mask[9][6], mask[9][10] = one, one, one
 mask[9][7], mask[9][8] = one, one
 
 
@@ -168,6 +179,21 @@ q_rubric_dict = {'q2_a': ["We should use statistical inference because there cou
                         # incorrect
                         "The better way to calculate who is the better fisherman would be to calculate the average  amount of fish caught as oppose to the average size",
                         " it might be roughly assumed from the day-to-day success evidence "
+                        ]
+}
+
+p_correct_random = {'q2_a': [
+                          "if the proper data is collected and there is a population and a sample group then we would be able to conduct one of the many different statistical inference test. We would also need the sample to be random with no outliers and an aprox. normal population.",
+                          ],
+               'q2_b': ["Simple; use the same test as described in the paragraph. If she does recognize all of the listed notes by ear, it can be inferred that she does indeed have a ""good ear for music."" If she doesn't recognize the notes, then she does not have a good ear for music.",
+                        ],
+               'q3_a': ["Yes, by testing a random sample of the display screens received, the engineer can determine an estimation of the true population that is bad, and almost accurately determine if this is above or below the 5% level of rejection/acceptance.",
+                        ],
+               'q3_b': ["If the data that was gathered read that a large percentage of the display screens did not work or were very bad, that would easily influence my decision to not purchase the order.",
+                        ],
+               'q4_a': ["Yes, statistical inference should be used to determine this because the data gathered by each person and averaged out is very accurate. Therefore you can easily see who the better fisherman is.",
+                        ],
+               'q4_b': ["If Mark averages a higher length of Walleye fish than Dan does, he is a better fisherman.",
                         ]
 }
 

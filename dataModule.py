@@ -36,6 +36,10 @@ class SequenceDataset(Dataset):
                 # add data
                 data_list.append(t)
             data_list.append(ans_text)
+            # random p_correct
+            p_random_list = p_correct_random[q_id]
+            for t in p_random_list[0:]:
+                data_list.append(t)
             data = []
             self.lable_set.add(cat)
             data.append(cat)

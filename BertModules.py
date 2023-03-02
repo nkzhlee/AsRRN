@@ -30,9 +30,15 @@ class BertClassifier(nn.Module):
         )
         # massage passing function f
         self.f = nn.Sequential(
-            nn.Linear(2 * self.mlp_hidden, self.mlp_hidden),
+            nn.Linear(2 * self.mlp_hidden, hyperparameters['mid_dim']),
             nn.ReLU(),
-            nn.Linear(self.mlp_hidden, hyperparameters['mid_dim']),
+            # nn.Linear(self.mlp_hidden, hyperparameters['mid_dim']),
+            # nn.ReLU(),
+            nn.Dropout(hyperparameters["hidden_dropout_prob"]),
+        )
+
+        self.p = nn.Sequential(
+            nn.Linear(self.mlp_hidden * 2, self.mlp_hidden),
             nn.ReLU(),
             nn.Dropout(),
         )
@@ -40,9 +46,9 @@ class BertClassifier(nn.Module):
         self.g = nn.Sequential(
             nn.Linear(2 * self.mlp_hidden + hyperparameters['mid_dim'], self.mlp_hidden),
             nn.ReLU(),
-            # nn.Linear(self.mlp_hidden, self.mlp_hidden),
+            # nn.Linear(self.mlp_hidden, self.ml p_hidden),
             # nn.ReLU(),
-            nn.Dropout(),
+            nn.Dropout(hyperparameters["hidden_dropout_prob"]),
         )
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None,
@@ -52,8 +58,13 @@ class BertClassifier(nn.Module):
                             attention_mask=attention_mask, head_mask=head_mask)
 
         # Last layer output (Total 12 layers)
-        pooled_output = outputs[-1]
+        pooled_output_old = outputs[-1]
         #print('pooled_output: ', pooled_output.size())
+        # get the noise node embedding
+        a, b = pooled_output_old[4], pooled_output_old[5]
+        c = torch.cat((a, b))
+        pooled_output=pooled_output_old.clone()
+        pooled_output[9] = self.p(c)
         pooled_output = self.dropout(pooled_output).unsqueeze(0)
         super_node = torch.randn(1, hyperparameters['hidden_dim']).unsqueeze(0).to(self.device)
         initial_state = torch.cat((super_node, pooled_output.clone()), dim=1)
@@ -88,7 +99,7 @@ class BertClassifier(nn.Module):
             states = states.unsqueeze(0)
             # print('states: ', states.size())
         # remove the supernode from the node list
-        answer_state = states.squeeze(0)[-1]
+        answer_state = states.squeeze(0)[-2]
         # print('answer_state: ', answer_state.size())
         output = self.o(answer_state.unsqueeze(0))
         output = torch.sigmoid(output)

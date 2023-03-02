@@ -19,7 +19,8 @@ from pytorch_transformers import BertTokenizer, BertConfig
 from pytorch_transformers import WarmupLinearSchedule
 from BertModules import BertClassifier
 import wandb
-
+import pandas as pd
+import random
 
 
 def distance(answer, examplar):
@@ -34,35 +35,35 @@ def distance(answer, examplar):
 def contrastiveloss(targets, states):
     loss = 0.0
     #take average of sim(ref, ans)
-    S_c1, S_c2 = distance(states[3], states[-1]), distance(states[4], states[-1])
-    S_p1, S_p2 = distance(states[5], states[-1]), distance(states[6], states[-1])
-    S_in1, S_in2 = distance(states[7], states[-1]), distance(states[8], states[-1])
+    S_c1, S_c2 = distance(states[3], states[-2]), distance(states[4], states[-2])
+    S_p1, S_p2 = distance(states[5], states[-2]), distance(states[6], states[-2])
+    epsilon = 0.2  # the amount of noise to add
+    #S_p3 = (S_p1 + S_p2)/2 + random.uniform(-epsilon, epsilon)
+    S_p3= distance(states[10], states[-2])
+    S_in1, S_in2 = distance(states[7], states[-2]), distance(states[8], states[-2])
     S_t, S_d = 0.0, 0.0
-    #print("targets {}".format(targets[0]))
+    mid = torch.max(S_p1, S_p2)
+    S_d = torch.exp(torch.max(S_in1, S_in2)/hyperparameters['temp']) + \
+          torch.exp(torch.max(mid, S_p3)/hyperparameters['temp']) + \
+          torch.exp(((S_c1 + S_c2)/2)/hyperparameters['temp'])
     if targets[0] == 0:
-        #print("in_correct")
-        loss = 0.0
+        S_t = torch.exp(torch.max(S_in1, S_in2)/hyperparameters['temp'])
+        loss = -torch.log(S_t / S_d)
+        # S_t = torch.exp(((S_in1 + S_in2) / 2) / hyperparameters['temp'])
+        # loss = -torch.log(S_t / S_d)
+        #loss = 0
     if targets[0] == 1:
         #print("partial correct")
-        # print(S_c1)
-        # print(S_c2)
-        # print(S_p1)
-        # print(S_p2)
-        S_t = torch.exp((S_p1 + S_p2) / 2)
-        S_d = torch.exp((S_p1 + S_p2) / 2) + torch.exp((S_c1 + S_c2) / 2)
-        loss = -torch.log(S_t / S_d)
+        S_t = torch.exp(torch.max(mid, S_p3)/hyperparameters['temp'])
+        loss = -torch.log(S_t/S_d)
     if targets[0] == 2:
         #print("correct")
-        # print(S_c1)
-        # print(S_c2)
-        # print(S_p1)
-        # print(S_p2)
-        S_t = torch.exp((S_c1 + S_c2) / 2)
-        S_d = torch.exp((S_p1 + S_p2) / 2) + torch.exp((S_c1 + S_c2) / 2)
-        loss = -torch.log(S_t / S_d)
+        S_t = torch.exp(((S_c1 + S_c2)/2)/hyperparameters['temp'])
+        loss = -torch.log(S_t/S_d)
     #print('states: ', states.size())
     s = [S_c1.data.cpu().numpy()[0], S_c2.data.cpu().numpy()[0],
-         S_p1.data.cpu().numpy()[0], S_p2.data.cpu().numpy()[0], S_in1.data.cpu().numpy()[0], S_in2.data.cpu().numpy()[0]]
+         S_p1.data.cpu().numpy()[0], S_p2.data.cpu().numpy()[0], S_p3.data.cpu().numpy()[0],
+         S_in1.data.cpu().numpy()[0], S_in2.data.cpu().numpy()[0]]
     return loss, s
 
 
@@ -98,7 +99,7 @@ def train(args):
     print('Testing Set Size {}'.format(testset_size))
 
     # Load BERT default config object and make necessary changes as per requirement
-    config = BertConfig(hidden_size=768,
+    config = BertConfig(hidden_size=hyperparameters["hidden_dim"],
                         num_hidden_layers=12,
                         num_attention_heads=12,
                         intermediate_size=3072,
@@ -168,6 +169,7 @@ def train(args):
             # print("classification_loss: {}".format(classification_loss))
             # print("contrastive_loss: {}".format(contrastive_loss))
             # print("loss: {}".format(loss))
+            # assert 1==0
             # print("sim_score: {}".format(sim_score))
             # assert 1 == 0
             if (step + 1) % hyperparameters['GRADIENT_ACCUMULATION_STEPS'] == 0:
@@ -261,6 +263,7 @@ def train(args):
         model.train(False)
         y_true = list()
         y_pred = list()
+        sim_list = list()
         print("start to test at {} ".format(best_ckp_path))
         model.load_state_dict(torch.load('./' + best_ckp_path))
         model.eval()
@@ -286,6 +289,8 @@ def train(args):
             pred_idx = torch.max(logits, 1)[1]
             y_true += list(labels.data.cpu().numpy())
             y_pred += list(pred_idx.data.cpu().numpy())
+            contrastive_loss, sim_score = contrastiveloss(labels, states)
+            sim_list.append(sim_score)
         print(len(y_true), len(y_pred))
         acc = accuracy_score(y_true, y_pred)
         #print("Quadratic Weighted Kappa is {}".format(metrics.quadratic_weighted_kappa(y_true, y_pred)))
@@ -293,6 +298,35 @@ def train(args):
         print(classification_report(y_true, y_pred))
         print(confusion_matrix(y_true, y_pred))
         wandb.log({"final_test Acc": acc})
+        # output result
+        df = pd.read_csv(test_file[0], encoding='utf-8')
+        #X_test = df_test[["q_id","predict_label_SFRN","next_high_class","prob_incorrect_SFRN", "prob_partial_correct_SFRN", "prob_correct_SFRN"]]
+        out = df[['a_id','a_q_id','True Label']]
+        d = {"a_id":[], "q_id":[], "predict_label":[], "truth_label":[],
+             "c_ref_1":[], "c_ref_2":[], "p_ref_1":[], "p_ref_2":[], "p_ref_3":[], "i_ref_1":[], "i_ref_2":[],
+             'max_sim':[], 'close_ref':[]}
+        out_new = pd.DataFrame(data=d)
+        ref_dict = {0:'c_ref_1', 1:'c_ref_2', 2:'p_ref_1', 3:'p_ref_2', 4:'i_ref_1', 5:'i_ref_2', 6:'i_ref_2',}
+        for i in range(len(out)):
+            id = out.loc[i, "a_id"]
+            out_new.loc[i, "q_id"] = out.loc[i, "a_q_id"]
+            out_new.loc[i, "a_id"] = id
+            out_new.loc[i, "truth_label"] = y_true[i]
+            out_new.loc[i, "predict_label"] = y_pred[i]
+            out_new.loc[i, "c_ref_1"] = sim_list[i][0]
+            out_new.loc[i, "c_ref_2"] = sim_list[i][1]
+            out_new.loc[i, "p_ref_1"] = sim_list[i][2]
+            out_new.loc[i, "p_ref_2"] = sim_list[i][3]
+            out_new.loc[i, "p_ref_3"] = sim_list[i][4]
+            out_new.loc[i, "i_ref_1"] = sim_list[i][5]
+            out_new.loc[i, "i_ref_2"] = sim_list[i][6]
+            # find max sim
+            max_value = max(sim_list[i])
+            max_index = sim_list[i].index(max_value)
+            out_new.loc[i, "max_sim"] = max_value
+            out_new.loc[i, "close_ref"] = ref_dict[max_index]
+
+        out_new.to_csv('./results/'+hyperparameters['model_name']+'_'+args.ckp_name+'.csv', index=False)
 
 def main():
     parser = argparse.ArgumentParser()
