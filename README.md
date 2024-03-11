@@ -1,22 +1,27 @@
+# ASGA
 
 
+Step 1: Create a New Conda Environment
+First, you create a new Conda environment. You can specify the version of Python you want in the environment if your requirements.txt file is dependent on a specific Python version. If not specified, the default Python version that comes with your Anaconda installation will be used.
 
-conda list -e > requirements.txt
+conda create -n mynewenv python=3.6
 
-can be used to create a conda virtual environment with
+Step 2: Activate the New Environment
+Before installing the packages, you need to activate the newly created environment.
 
-conda create --name <env> --file requirements.txt
-conda create --name py3.6_ASAG --file requirements.txt
+conda activate mynewenv
 
-If you want a file which you can use to create a pip virtual environment (i.e. a requirements.txt in the right format) you can install pip within the conda environment, then use pip to create requirements.txt.
+Step 3: Install Packages Using pip
+With the environment activated, you can now install the required packages listed in your requirements.txt file using pip.
 
-conda activate <env>
-conda install pip
-pip freeze > requirements.txt
-Then use the resulting requirements.txt to create a pip virtual environment:
-
-conda create -n py3.6_ASAG python=3.6
-
-python3 -m venv env
-source env/bin/activate
 pip install -r requirements.txt
+
+Ensure that requirements.txt is the path to your requirements file. If it's in the current directory, the command as shown will work. If it's in another directory, you'll need to specify the full path to the file.
+
+Step 4 Change the parameters in constant.py
+
+You might need to change the wangdb user information if you want to use it, otherwise you need to comment all the code in main.py to disable wangdb.
+
+Step 5 To run the code
+
+python -u main.py --ckp_name ckp --device cuda:0 
